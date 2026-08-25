@@ -1,8 +1,9 @@
 name: daily-reels
-# Moi ngay tao 1 video DOC (1080x1920) tu anh branded (nen mo + zoom) + nhac -> dang REELS.
+# Reel DOC "giat": B-roll shopping that (Pexels) cat nhanh 0.7s + zoom-punch + nhac Suno co loi
+# + intro/outro branded. Tat ca royalty-free -> khong bi gay Page.
 on:
   schedule:
-    - cron: '30 3 * * *'   # 10h30 VN (sau daily-video 30')
+    - cron: '30 3 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -13,58 +14,64 @@ jobs:
       - name: Cai ffmpeg + jq
         run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
 
-      - name: Tai anh
+      - name: Tai anh branded
         run: |
-          curl -sL https://mushoplaho.kientlt59.workers.dev/og.png  -o 1.png
-          curl -sL https://mushoplaho.kientlt59.workers.dev/og2.png -o 2.png
-          curl -sL https://mushoplaho.kientlt59.workers.dev/og3.png -o 3.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og.png  -o brand1.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og2.png -o brand2.png
 
-      - name: Nhac (assets/music.mp3 hoac Jamendo)
+      - name: Chon nhac Suno theo ngay
+        run: |
+          D=$(( $(date +%j) % 3 ))
+          if [ $D -eq 0 ]; then cp assets/music.mp3 m.mp3; elif [ $D -eq 1 ]; then cp assets/music2.mp3 m.mp3; else cp assets/music3.mp3 m.mp3; fi
+          ls -la m.mp3
+
+      - name: Tai B-roll Pexels (6 clip doc)
         env:
-          JAM: ${{ secrets.JAMENDO_CLIENT_ID }}
+          PK: ${{ secrets.PEXELS_API_KEY }}
         run: |
-          if [ -f assets/music.mp3 ]; then cp assets/music.mp3 music.mp3; echo "file repo"; exit 0; fi
-          if [ -z "$JAM" ]; then echo "khong nhac"; exit 0; fi
-          OFF=$(( $(date +%j) % 40 ))
-          URL=$(curl -s "https://api.jamendo.com/v3.0/tracks/?client_id=$JAM&format=json&limit=1&offset=$OFF&order=popularity_total&vocalinstrumental=instrumental&fuzzytags=energetic+upbeat+pop&audioformat=mp32" | jq -r '.results[0].audiodownload // empty')
-          [ -n "$URL" ] && curl -sL "$URL" -o music.mp3 && echo "co nhac" || echo "khong lay duoc"
+          i=0
+          for Q in "online%20shopping" "unboxing%20package" "woman%20using%20phone" "shopping%20sale" "delivery%20courier" "counting%20money"; do
+            i=$((i+1))
+            URL=$(curl -s -H "Authorization: $PK" "https://api.pexels.com/videos/search?query=$Q&per_page=1&orientation=portrait&size=medium" | jq -r '([.videos[0].video_files[]|select(.quality=="hd")][0].link) // .videos[0].video_files[0].link // empty')
+            if [ -n "$URL" ]; then curl -sL "$URL" -o broll$i.mp4 && echo "clip $i: OK"; else echo "clip $i: fail"; fi
+          done
+          ls -la broll*.mp4 || true
 
-      - name: Ghep video doc (nen mo + anh giua + zoom)
+      - name: Ghep reel giat
         run: |
-          make_clip() {
-            ffmpeg -y -loop 1 -t 5 -i "$1" -filter_complex \
-            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:4[bg];\
-             [0:v]scale=1000:-1[fg];\
-             [bg][fg]overlay=(W-w)/2:(H-h)/2,zoompan=z='min(zoom+0.0012,1.18)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,setsar=1,format=yuv420p[v]" \
-            -map "[v]" -c:v libx264 -preset veryfast -pix_fmt yuv420p "$2"
-          }
-          make_clip 1.png c1.mp4
-          make_clip 2.png c2.mp4
-          make_clip 3.png c3.mp4
-          printf "file 'c1.mp4'\nfile 'c2.mp4'\nfile 'c3.mp4'\n" > list.txt
+          DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 m.mp3); DUR=${DUR%.*}
+          [ -z "$DUR" ] && DUR=18; [ "$DUR" -gt 35 ] && DUR=35
+          echo "nhac dai ${DUR}s"
+          frames() { python3 -c "print(int($1*30))"; }
+          # branded: full anh tren nen mo (chu doc duoc)
+          seg_brand() { ffmpeg -y -loop 1 -t $2 -i "$1" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:3[bg];[0:v]scale=1000:-1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,zoompan=z='min(zoom+0.003,1.08)':d=$(frames $2):s=1080x1920:fps=30,setsar=1,format=yuv420p[v]" -map "[v]" -an -c:v libx264 -preset veryfast -pix_fmt yuv420p "$3"; }
+          # b-roll: full-bleed + zoom punch nhanh
+          seg_vid() { ST=$(( RANDOM % 3 )); ffmpeg -y -ss $ST -t $2 -i "$1" -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.007,1.15)':d=$(frames $2):s=1080x1920:fps=30,setsar=1,fps=30,format=yuv420p" -an -c:v libx264 -preset veryfast -pix_fmt yuv420p "$3"; }
+          rm -f list.txt
+          seg_brand brand1.png 1.3 s_intro.mp4; echo "file 's_intro.mp4'" >> list.txt
+          CUT=0.7; N=$(python3 -c "print(max(8,int(($DUR-3.0)/$CUT)))")
+          for j in $(seq 1 $N); do
+            c=$(( (j % 6) + 1 ))
+            if [ -f broll$c.mp4 ]; then seg_vid broll$c.mp4 $CUT s_$j.mp4; else seg_brand brand$(( (j%2)+1 )).png $CUT s_$j.mp4; fi
+            echo "file 's_$j.mp4'" >> list.txt
+          done
+          seg_brand brand2.png 1.6 s_outro.mp4; echo "file 's_outro.mp4'" >> list.txt
           ffmpeg -y -f concat -safe 0 -i list.txt -c copy silent.mp4
-          if [ -f music.mp3 ]; then ffmpeg -y -i silent.mp4 -i music.mp3 -c:v copy -c:a aac -b:a 160k -shortest reel.mp4; else cp silent.mp4 reel.mp4; fi
+          ffmpeg -y -i silent.mp4 -i m.mp3 -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest reel.mp4
           ls -la reel.mp4
 
-      - name: Dang REELS len Page (3 buoc)
+      - name: Dang REELS (3 buoc)
         env:
           TOKEN: ${{ secrets.FB_PAGE_POST_TOKEN }}
         run: |
-          if [ -z "$TOKEN" ]; then echo "Chua co FB_PAGE_POST_TOKEN"; exit 1; fi
+          if [ -z "$TOKEN" ]; then echo "Chua co token"; exit 1; fi
           PAGE=1240334605834446
-          DESC="🔥 Mua Shopee được HOÀN LẠI 50% hoa hồng! Dán link vào mushoplaho.kientlt59.workers.dev — miễn phí, không cài app 💸 #hoantien #shopee #muasam"
-          # 1. start
+          DESC="🔥 Mua Shopee HOÀN LẠI 50% hoa hồng! Dán link vào mushoplaho.kientlt59.workers.dev — miễn phí, không cài app 💸 #hoantien #shopee #sansale #muasam"
           S=$(curl -s -X POST "https://graph.facebook.com/v19.0/$PAGE/video_reels" -d "upload_phase=start" -d "access_token=$TOKEN")
-          echo "start: $S"
-          VID=$(echo "$S" | jq -r '.video_id')
-          UP=$(echo "$S" | jq -r '.upload_url')
-          if [ -z "$VID" ] || [ "$VID" = "null" ]; then echo "start fail"; exit 1; fi
-          # 2. upload binary
+          echo "start: $S"; VID=$(echo "$S" | jq -r '.video_id'); UP=$(echo "$S" | jq -r '.upload_url')
+          [ -z "$VID" ] || [ "$VID" = "null" ] && { echo "start fail"; exit 1; }
           SZ=$(stat -c%s reel.mp4)
-          U=$(curl -s -X POST "$UP" -H "Authorization: OAuth $TOKEN" -H "offset: 0" -H "file_size: $SZ" --data-binary "@reel.mp4")
-          echo "upload: $U"
-          # 3. finish (publish)
-          sleep 5
+          echo "upload $(curl -s -X POST "$UP" -H "Authorization: OAuth $TOKEN" -H "offset: 0" -H "file_size: $SZ" --data-binary "@reel.mp4")"
+          sleep 6
           F=$(curl -s -X POST "https://graph.facebook.com/v19.0/$PAGE/video_reels" -d "upload_phase=finish" -d "video_id=$VID" -d "video_state=PUBLISHED" --data-urlencode "description=$DESC" -d "access_token=$TOKEN")
-          echo "finish: $F"
-          echo "$F" | grep -q '"success":true' && echo "OK REEL id=$VID" || (echo "FINISH FAIL"; exit 1)
+          echo "finish: $F"; echo "$F" | grep -q '"success":true' && echo "OK REEL id=$VID" || { echo "FAIL"; exit 1; }
