@@ -1,6 +1,6 @@
 name: daily-video
-# Moi ngay tao 2 video slideshow tu 3 anh branded (nhac free tuy chon) -> dang Page.
-# KHONG dung video/nhac ban quyen cua nguoi khac.
+# Moi ngay tao 2 video dong (zoom Ken Burns + nhac soi dong Jamendo) -> dang Page.
+# Nhac/anh deu ROYALTY-FREE (khong dung hit ban quyen -> khong bi gay Page).
 on:
   schedule:
     - cron: '0 3 * * *'
@@ -21,25 +21,28 @@ jobs:
           curl -sL https://mushoplaho.kientlt59.workers.dev/og2.png -o 2.png
           curl -sL https://mushoplaho.kientlt59.workers.dev/og3.png -o 3.png
 
-      - name: Nhac nen (file assets/music.mp3 hoac Jamendo neu co key)
+      - name: Lay nhac soi dong tu Jamendo (energetic, instrumental, popular)
         env:
           JAM: ${{ secrets.JAMENDO_CLIENT_ID }}
         run: |
-          if [ -f assets/music.mp3 ]; then
-            cp assets/music.mp3 music.mp3
-          elif [ -n "$JAM" ]; then
-            URL=$(curl -s "https://api.jamendo.com/v3.0/tracks/?client_id=$JAM&format=json&limit=1&order=popularity_total&vocalinstrumental=instrumental&include=musicinfo" | jq -r '.results[0].audiodownload')
-            if [ -n "$URL" ] && [ "$URL" != "null" ]; then curl -sL "$URL" -o music.mp3; fi
+          if [ -f assets/music.mp3 ]; then cp assets/music.mp3 music.mp3; echo "dung file repo"; exit 0; fi
+          if [ -z "$JAM" ]; then echo "khong co Jamendo key -> video khong nhac"; exit 0; fi
+          OFF=$(( $(date +%j) % 40 ))
+          API="https://api.jamendo.com/v3.0/tracks/?client_id=$JAM&format=json&limit=1&offset=$OFF&order=popularity_total&vocalinstrumental=instrumental&fuzzytags=energetic+upbeat+electronic&audioformat=mp32"
+          URL=$(curl -s "$API" | jq -r '.results[0].audiodownload // empty')
+          if [ -z "$URL" ]; then
+            URL=$(curl -s "https://api.jamendo.com/v3.0/tracks/?client_id=$JAM&format=json&limit=1&offset=$OFF&order=popularity_total&vocalinstrumental=instrumental" | jq -r '.results[0].audiodownload // empty')
           fi
-          if [ -f music.mp3 ]; then echo "co nhac"; else echo "khong nhac"; fi
+          if [ -n "$URL" ]; then curl -sL "$URL" -o music.mp3 && echo "co nhac Jamendo"; else echo "khong lay duoc nhac"; fi
 
-      - name: Ghep 2 video (khac thu tu anh)
+      - name: Ghep 2 video dong (Ken Burns zoom + fade)
         run: |
-          F="[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[a];[1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[b];[2:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[c];[a][b]xfade=transition=fade:duration=1:offset=4[ab];[ab][c]xfade=transition=fade:duration=1:offset=8[v]"
-          ffmpeg -y -loop 1 -t 5 -i 1.png -loop 1 -t 5 -i 2.png -loop 1 -t 5 -i 3.png -filter_complex "$F" -map "[v]" -c:v libx264 -pix_fmt yuv420p -movflags +faststart v1.mp4
-          ffmpeg -y -loop 1 -t 5 -i 3.png -loop 1 -t 5 -i 1.png -loop 1 -t 5 -i 2.png -filter_complex "$F" -map "[v]" -c:v libx264 -pix_fmt yuv420p -movflags +faststart v2.mp4
+          ZP="scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='min(zoom+0.0012,1.25)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30,setsar=1,format=yuv420p"
+          FILT="[0:v]${ZP}[a];[1:v]${ZP}[b];[2:v]${ZP}[c];[a][b]xfade=transition=fade:duration=1:offset=4[ab];[ab][c]xfade=transition=fade:duration=1:offset=8[v]"
+          ffmpeg -y -loop 1 -t 5 -i 1.png -loop 1 -t 5 -i 2.png -loop 1 -t 5 -i 3.png -filter_complex "$FILT" -map "[v]" -c:v libx264 -preset medium -pix_fmt yuv420p -movflags +faststart v1.mp4
+          ffmpeg -y -loop 1 -t 5 -i 3.png -loop 1 -t 5 -i 1.png -loop 1 -t 5 -i 2.png -filter_complex "$FILT" -map "[v]" -c:v libx264 -preset medium -pix_fmt yuv420p -movflags +faststart v2.mp4
           for f in v1 v2; do
-            if [ -f music.mp3 ]; then ffmpeg -y -i $f.mp4 -i music.mp3 -c:v copy -c:a aac -shortest ${f}_final.mp4; else cp $f.mp4 ${f}_final.mp4; fi
+            if [ -f music.mp3 ]; then ffmpeg -y -i $f.mp4 -i music.mp3 -c:v copy -c:a aac -b:a 160k -shortest ${f}_final.mp4; else cp $f.mp4 ${f}_final.mp4; fi
           done
           ls -la *_final.mp4
 
