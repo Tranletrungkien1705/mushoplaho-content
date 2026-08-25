@@ -1,0 +1,70 @@
+name: daily-reels
+# Moi ngay tao 1 video DOC (1080x1920) tu anh branded (nen mo + zoom) + nhac -> dang REELS.
+on:
+  schedule:
+    - cron: '30 3 * * *'   # 10h30 VN (sau daily-video 30')
+  workflow_dispatch: {}
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cai ffmpeg + jq
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
+
+      - name: Tai anh
+        run: |
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og.png  -o 1.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og2.png -o 2.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og3.png -o 3.png
+
+      - name: Nhac (assets/music.mp3 hoac Jamendo)
+        env:
+          JAM: ${{ secrets.JAMENDO_CLIENT_ID }}
+        run: |
+          if [ -f assets/music.mp3 ]; then cp assets/music.mp3 music.mp3; echo "file repo"; exit 0; fi
+          if [ -z "$JAM" ]; then echo "khong nhac"; exit 0; fi
+          OFF=$(( $(date +%j) % 40 ))
+          URL=$(curl -s "https://api.jamendo.com/v3.0/tracks/?client_id=$JAM&format=json&limit=1&offset=$OFF&order=popularity_total&vocalinstrumental=instrumental&fuzzytags=energetic+upbeat+pop&audioformat=mp32" | jq -r '.results[0].audiodownload // empty')
+          [ -n "$URL" ] && curl -sL "$URL" -o music.mp3 && echo "co nhac" || echo "khong lay duoc"
+
+      - name: Ghep video doc (nen mo + anh giua + zoom)
+        run: |
+          make_clip() {
+            ffmpeg -y -loop 1 -t 5 -i "$1" -filter_complex \
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=28:4[bg];\
+             [0:v]scale=1000:-1[fg];\
+             [bg][fg]overlay=(W-w)/2:(H-h)/2,zoompan=z='min(zoom+0.0012,1.18)':d=150:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,setsar=1,format=yuv420p[v]" \
+            -map "[v]" -c:v libx264 -preset veryfast -pix_fmt yuv420p "$2"
+          }
+          make_clip 1.png c1.mp4
+          make_clip 2.png c2.mp4
+          make_clip 3.png c3.mp4
+          printf "file 'c1.mp4'\nfile 'c2.mp4'\nfile 'c3.mp4'\n" > list.txt
+          ffmpeg -y -f concat -safe 0 -i list.txt -c copy silent.mp4
+          if [ -f music.mp3 ]; then ffmpeg -y -i silent.mp4 -i music.mp3 -c:v copy -c:a aac -b:a 160k -shortest reel.mp4; else cp silent.mp4 reel.mp4; fi
+          ls -la reel.mp4
+
+      - name: Dang REELS len Page (3 buoc)
+        env:
+          TOKEN: ${{ secrets.FB_PAGE_POST_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "Chua co FB_PAGE_POST_TOKEN"; exit 1; fi
+          PAGE=1240334605834446
+          DESC="🔥 Mua Shopee được HOÀN LẠI 50% hoa hồng! Dán link vào mushoplaho.kientlt59.workers.dev — miễn phí, không cài app 💸 #hoantien #shopee #muasam"
+          # 1. start
+          S=$(curl -s -X POST "https://graph.facebook.com/v19.0/$PAGE/video_reels" -d "upload_phase=start" -d "access_token=$TOKEN")
+          echo "start: $S"
+          VID=$(echo "$S" | jq -r '.video_id')
+          UP=$(echo "$S" | jq -r '.upload_url')
+          if [ -z "$VID" ] || [ "$VID" = "null" ]; then echo "start fail"; exit 1; fi
+          # 2. upload binary
+          SZ=$(stat -c%s reel.mp4)
+          U=$(curl -s -X POST "$UP" -H "Authorization: OAuth $TOKEN" -H "offset: 0" -H "file_size: $SZ" --data-binary "@reel.mp4")
+          echo "upload: $U"
+          # 3. finish (publish)
+          sleep 5
+          F=$(curl -s -X POST "https://graph.facebook.com/v19.0/$PAGE/video_reels" -d "upload_phase=finish" -d "video_id=$VID" -d "video_state=PUBLISHED" --data-urlencode "description=$DESC" -d "access_token=$TOKEN")
+          echo "finish: $F"
+          echo "$F" | grep -q '"success":true' && echo "OK REEL id=$VID" || (echo "FINISH FAIL"; exit 1)
