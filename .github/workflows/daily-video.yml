@@ -1,0 +1,66 @@
+name: daily-video
+# Moi ngay tao 1 video slideshow tu 3 anh branded (co the them nhac free ban quyen)
+# roi dang len Page Facebook. KHONG dung video ban quyen cua nguoi khac.
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 10h sang VN
+  workflow_dispatch: {}
+
+jobs:
+  build-and-post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cai ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Tai 3 anh branded tu worker
+        run: |
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og.png  -o 1.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og2.png -o 2.png
+          curl -sL https://mushoplaho.kientlt59.workers.dev/og3.png -o 3.png
+          ls -la *.png
+
+      - name: Ghep video slideshow (fade), them nhac neu co assets/music.mp3
+        run: |
+          ffmpeg -y \
+            -loop 1 -t 5 -i 1.png -loop 1 -t 5 -i 2.png -loop 1 -t 5 -i 3.png \
+            -filter_complex "\
+              [0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[a]; \
+              [1:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[b]; \
+              [2:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[c]; \
+              [a][b]xfade=transition=fade:duration=1:offset=4[ab]; \
+              [ab][c]xfade=transition=fade:duration=1:offset=8[v]" \
+            -map "[v]" -c:v libx264 -pix_fmt yuv420p -movflags +faststart video.mp4
+          if [ -f assets/music.mp3 ]; then
+            ffmpeg -y -i video.mp4 -i assets/music.mp3 -c:v copy -c:a aac -shortest final.mp4
+          else
+            cp video.mp4 final.mp4
+          fi
+          ls -la final.mp4
+
+      - name: Chon caption xoay vong theo ngay
+        id: cap
+        run: |
+          CAPS=(
+          "🔥 Mua Shopee được HOÀN LẠI tiền! Dán link sản phẩm vào mushoplaho.kientlt59.workers.dev để nhận link hoàn 50% hoa hồng. Miễn phí, không cài app 💸"
+          "Bạn có biết mỗi đơn Shopee đều lấy lại được 50% hoa hồng? 👉 mushoplaho.kientlt59.workers.dev"
+          "🛒 Sắp sale Shopee! Mua qua mushoplaho.kientlt59.workers.dev để được hoàn thêm tiền mỗi đơn 💸"
+          "Cùng 1 sản phẩm, cùng 1 giá — mua qua mushoplaho.kientlt59.workers.dev thì được HOÀN 50% hoa hồng 😉"
+          "🎁 Miễn phí 100%: dán link Shopee → nhận link hoàn tiền → mua → nhận lại tiền. mushoplaho.kientlt59.workers.dev"
+          )
+          IDX=$(( $(date +%j) % ${#CAPS[@]} ))
+          echo "text=${CAPS[$IDX]}" >> "$GITHUB_OUTPUT"
+
+      - name: Dang video len Page Facebook
+        env:
+          TOKEN: ${{ secrets.FB_PAGE_POST_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "Chua co secret FB_PAGE_POST_TOKEN"; exit 1; fi
+          RESP=$(curl -s -F "source=@final.mp4" \
+            -F "description=${{ steps.cap.outputs.text }}" \
+            -F "access_token=$TOKEN" \
+            "https://graph.facebook.com/v19.0/1240334605834446/videos")
+          echo "$RESP"
+          echo "$RESP" | grep -q '"id"' && echo "✅ Đã đăng video" || (echo "❌ Lỗi đăng"; exit 1)
