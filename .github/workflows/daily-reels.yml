@@ -29,11 +29,18 @@ jobs:
         env:
           PK: ${{ secrets.PEXELS_API_KEY }}
         run: |
+          # Nguoi THAT + NANG DONG (nhay, reaction, hao hung) thay vi canh tinh -> "co suc song, giat"
+          # Xoay theo ngay de moi hom clip khac nhau (tranh trung lap)
+          POOL=( "woman%20dancing" "happy%20people%20celebrating" "excited%20woman%20phone" "friends%20laughing" "young%20people%20fun" "girl%20dancing%20phone" "people%20party%20dance" "unboxing%20reaction" "online%20shopping" "happy%20woman%20shopping" "surprised%20face" "dancing%20street" )
+          OFF=$(( $(date +%j) % ${#POOL[@]} ))
           i=0
-          for Q in "online%20shopping" "unboxing" "woman%20using%20phone" "shopping%20bags" "delivery%20package" "counting%20money"; do
+          for k in 0 1 2 3 4 5; do
+            Q=${POOL[$(( (OFF + k) % ${#POOL[@]} ))]}
             i=$((i+1))
-            URL=$(curl -s -H "Authorization: $PK" "https://api.pexels.com/videos/search?query=$Q&per_page=1&orientation=portrait&size=medium" | jq -r '([.videos[0].video_files[]|select(.height!=null and .height<=720 and .height>=400)]|sort_by(.height)|last|.link) // ([.videos[0].video_files[]|select(.height!=null)]|sort_by(.height)|.[0].link) // empty')
-            if [ -n "$URL" ]; then curl -sL "$URL" -o broll$i.mp4 && echo "clip $i OK ($(du -h broll$i.mp4|cut -f1))"; else echo "clip $i fail"; fi
+            # lay tối đa 3 video/query roi random 1 cai -> da dang hon
+            PAGE_PICK=$(( ( $(date +%j) + k ) % 3 + 1 ))
+            URL=$(curl -s -H "Authorization: $PK" "https://api.pexels.com/videos/search?query=$Q&per_page=3&orientation=portrait&size=medium" | jq -r "([.videos[]?.video_files[]?|select(.height!=null and .height<=720 and .height>=400)]|sort_by(.height)|last|.link) // ([.videos[]?.video_files[]?|select(.height!=null)]|sort_by(.height)|.[0].link) // empty")
+            if [ -n "$URL" ]; then curl -sL "$URL" -o broll$i.mp4 && echo "clip $i ($Q) OK ($(du -h broll$i.mp4|cut -f1))"; else echo "clip $i ($Q) fail"; fi
           done
 
       - name: Ghep reel giat (cat nhanh, ultrafast)
@@ -44,12 +51,17 @@ jobs:
           fr() { python3 -c "print(int($1*30))"; }
           seg_brand() { ffmpeg -y -loop 1 -t $2 -i "$1" -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=22:3[bg];[0:v]scale=1000:-1[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,zoompan=z='min(zoom+0.003,1.06)':d=$(fr $2):s=1080x1920:fps=30,setsar=1,format=yuv420p[v]" -map "[v]" -an -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$3"; }
           seg_vid() { ST=$(( RANDOM % 3 )); ffmpeg -y -ss $ST -t $2 -i "$1" -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,setsar=1,format=yuv420p" -an -c:v libx264 -preset ultrafast -pix_fmt yuv420p "$3"; }
+          # Gom TAT CA clip co the dung: AI-nguoi-that (assets/aiclips) UU TIEN + Pexels broll
+          CLIPS=(); if [ -d assets/aiclips ]; then for f in assets/aiclips/*.mp4; do [ -f "$f" ] && CLIPS+=("$f"); done; fi
+          for f in broll1.mp4 broll2.mp4 broll3.mp4 broll4.mp4 broll5.mp4 broll6.mp4; do [ -f "$f" ] && CLIPS+=("$f"); done
+          echo "tong clip dung duoc: ${#CLIPS[@]} (AI-nguoi uu tien)"
           rm -f list.txt
           seg_brand brand1.png 1.3 s_intro.mp4; echo "file 's_intro.mp4'" >> list.txt
           CUT=0.8; N=$(python3 -c "print(max(8,int(($DUR-3.0)/$CUT)))")
           for j in $(seq 1 $N); do
-            c=$(( (j % 6) + 1 ))
-            if [ -f broll$c.mp4 ]; then seg_vid broll$c.mp4 $CUT s_$j.mp4; else seg_brand brand$(( (j%2)+1 )).png $CUT s_$j.mp4; fi
+            if [ ${#CLIPS[@]} -gt 0 ]; then
+              SRC=${CLIPS[$(( (j-1) % ${#CLIPS[@]} ))]}; seg_vid "$SRC" $CUT s_$j.mp4
+            else seg_brand brand$(( (j%2)+1 )).png $CUT s_$j.mp4; fi
             echo "file 's_$j.mp4'" >> list.txt
           done
           seg_brand brand2.png 1.6 s_outro.mp4; echo "file 's_outro.mp4'" >> list.txt
