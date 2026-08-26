@@ -65,8 +65,11 @@ jobs:
             echo "file 's_$j.mp4'" >> list.txt
           done
           seg_brand brand2.png 1.6 s_outro.mp4; echo "file 's_outro.mp4'" >> list.txt
-          ffmpeg -y -f concat -safe 0 -i list.txt -c copy silent.mp4
-          ffmpeg -y -i silent.mp4 -i m.mp3 -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest reel.mp4
+          # RE-ENCODE concat (khong -c copy) -> timestamp CFR dung, tranh phinh do dai (115s bug)
+          ffmpeg -y -f concat -safe 0 -i list.txt -vsync cfr -r 30 -c:v libx264 -preset ultrafast -pix_fmt yuv420p silent.mp4
+          echo "silent len: $(ffprobe -v error -show_entries format=duration -of csv=p=0 silent.mp4)s"
+          # Cap cung <=25s cho reel punchy; nhac cat theo -shortest
+          ffmpeg -y -i silent.mp4 -i m.mp3 -map 0:v -map 1:a -t 25 -c:v copy -c:a aac -b:a 192k -shortest reel.mp4
           echo "reel: $(du -h reel.mp4|cut -f1), $(ffprobe -v error -show_entries format=duration -of csv=p=0 reel.mp4)s"
 
       - name: Dang REELS (3 buoc)
