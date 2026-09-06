@@ -1,0 +1,36 @@
+name: lead-radar-send
+# Tu dong gui pitch toi lead 'new' (toi da 290/ngay, Brevo free = 300/ngay).
+# Tuan tu, phan du giu lai -> hom sau gui tiep. Sau khi gui -> sync "da xem" tu Brevo.
+on:
+  schedule:
+    - cron: '30 1 * * *'   # 08:30 gio VN (chay sau pull luc 08:00)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'So mail toi da gui lan nay (mac dinh 290)'
+        default: '290'
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE: ${{ secrets.LR_BASE }}
+      TOKEN: ${{ secrets.LR_TOKEN }}
+    steps:
+      - name: Gui batch
+        run: |
+          LIM="${{ github.event.inputs.limit }}"; LIM="${LIM:-290}"
+          IDS=$(curl -s "$BASE/pending?t=$TOKEN&limit=$LIM" | jq -r '.ids[]?')
+          N=$(echo "$IDS" | grep -c . || true)
+          echo "Lead chua gui (se gui): $N"
+          SENT=0; FAIL=0
+          for id in $IDS; do
+            R=$(curl -s -X POST "$BASE/send?t=$TOKEN" -H 'content-type: application/json' -d "{\"id\":$id}")
+            if echo "$R" | grep -q '"ok":true'; then SENT=$((SENT+1)); else FAIL=$((FAIL+1)); echo "  fail id=$id: $(echo $R|cut -c1-120)"; fi
+            sleep 1.2
+          done
+          echo "==> DA GUI=$SENT | LOI=$FAIL"
+      - name: Sync 'da xem'
+        run: |
+          echo "sync opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
