@@ -38,6 +38,21 @@ jobs:
           echo "==> DA GUI=$SENT | LOI=$FAIL"
           echo "SENT=$SENT" >> $GITHUB_ENV
 
+      - name: Follow-up (nhac lead >5 ngay chua tra loi, trong ngan sach con lai)
+        run: |
+          REMAIN=$((290 - ${SENT:-0}))
+          if [ "$REMAIN" -le 0 ]; then echo "het ngan sach, bo qua follow-up"; exit 0; fi
+          IDS=$(curl -s "$BASE/pending-followup?t=$TOKEN&limit=$REMAIN&days=5" | jq -r '.ids[]?')
+          N=$(echo "$IDS" | grep -c . || true)
+          echo "Follow-up: $N lead (ngan sach con $REMAIN)"
+          FU=0
+          for id in $IDS; do
+            R=$(curl -s -X POST "$BASE/send-followup?t=$TOKEN" -H 'content-type: application/json' -d "{\"id\":$id}")
+            echo "$R" | grep -q '"ok":true' && FU=$((FU+1))
+            sleep 1.2
+          done
+          echo "==> DA FOLLOW-UP=$FU"
+
       - name: Sync 'da xem'
         run: echo "opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
 
