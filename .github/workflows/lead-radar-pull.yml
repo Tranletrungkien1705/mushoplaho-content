@@ -1,0 +1,18 @@
+name: lead-radar-pull
+# Quet lead moi tu HackerNews (Who is hiring? / Seeking freelancer) hang ngay -> Supabase.
+# CHI quet + luu, KHONG tu gui email (gui la human-review o dashboard Lead Radar).
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 08:00 gio VN moi ngay
+  workflow_dispatch: {}
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Quet lead
+        run: |
+          RES=$(curl -s -X POST "${{ secrets.LEAD_RADAR_PULL_URL }}")
+          echo "$RES"
+          echo "$RES" | grep -q '"ok":true' || { echo "PULL FAIL"; exit 1; }
