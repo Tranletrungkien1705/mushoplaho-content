@@ -1,0 +1,23 @@
+name: lead-radar-replies
+# Quet Gmail INBOX (IMAP) tim reply tu lead da gui -> danh dau 'da tra loi' tren dashboard.
+on:
+  schedule:
+    - cron: '0 19 * * *'   # 02:00 gio VN (sau khi gui luc 01:00)
+  workflow_dispatch: {}
+
+jobs:
+  replies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm i imapflow@1
+      - name: Quet reply
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          LR_BASE: ${{ secrets.LR_BASE }}
+          LR_TOKEN: ${{ secrets.LR_TOKEN }}
+        run: node scripts/lead-radar-replies.mjs
