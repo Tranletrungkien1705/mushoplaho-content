@@ -1,36 +1,46 @@
 name: lead-radar-send
-# Tu dong gui pitch toi lead 'new' (toi da 290/ngay, Brevo free = 300/ngay).
-# Tuan tu, phan du giu lai -> hom sau gui tiep. Sau khi gui -> sync "da xem" tu Brevo.
+# 01:00 gio VN moi ngay: quet lead moi -> gui theo CAP warm-up (25 -> ... -> 290) -> sync 'da xem' -> tang cap.
+# Tuan tu, phan du giu lai hom sau. Brevo free = 300/ngay.
 on:
   schedule:
-    - cron: '30 1 * * *'   # 08:30 gio VN (chay sau pull luc 08:00)
+    - cron: '0 18 * * *'   # 18:00 UTC = 01:00 gio VN
   workflow_dispatch:
     inputs:
       limit:
-        description: 'So mail toi da gui lan nay (mac dinh 290)'
-        default: '290'
+        description: 'Ep so mail lan nay (bo trong = dung CAP warm-up)'
+        default: ''
 
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       BASE: ${{ secrets.LR_BASE }}
       TOKEN: ${{ secrets.LR_TOKEN }}
     steps:
-      - name: Gui batch
+      - name: Quet lead moi
+        run: echo "pull: $(curl -s -X POST "$BASE/pull?t=$TOKEN")"
+
+      - name: Gui batch theo CAP warm-up
         run: |
-          LIM="${{ github.event.inputs.limit }}"; LIM="${LIM:-290}"
-          IDS=$(curl -s "$BASE/pending?t=$TOKEN&limit=$LIM" | jq -r '.ids[]?')
+          FORCE="${{ github.event.inputs.limit }}"
+          if [ -n "$FORCE" ]; then CAP="$FORCE"; else CAP=$(curl -s "$BASE/cap?t=$TOKEN" | jq -r '.cap'); fi
+          echo "CAP hom nay: $CAP"
+          IDS=$(curl -s "$BASE/pending?t=$TOKEN&limit=$CAP" | jq -r '.ids[]?')
           N=$(echo "$IDS" | grep -c . || true)
-          echo "Lead chua gui (se gui): $N"
+          echo "Se gui: $N lead"
           SENT=0; FAIL=0
           for id in $IDS; do
             R=$(curl -s -X POST "$BASE/send?t=$TOKEN" -H 'content-type: application/json' -d "{\"id\":$id}")
-            if echo "$R" | grep -q '"ok":true'; then SENT=$((SENT+1)); else FAIL=$((FAIL+1)); echo "  fail id=$id: $(echo $R|cut -c1-120)"; fi
+            if echo "$R" | grep -q '"ok":true'; then SENT=$((SENT+1)); else FAIL=$((FAIL+1)); echo "  fail id=$id: $(echo $R|cut -c1-100)"; fi
             sleep 1.2
           done
           echo "==> DA GUI=$SENT | LOI=$FAIL"
+          echo "SENT=$SENT" >> $GITHUB_ENV
+
       - name: Sync 'da xem'
-        run: |
-          echo "sync opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
+        run: echo "opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
+
+      - name: Tang CAP cho ngay mai
+        if: ${{ github.event.inputs.limit == '' && env.SENT != '0' }}
+        run: echo "bump: $(curl -s -X POST "$BASE/cap-bump?t=$TOKEN")"
