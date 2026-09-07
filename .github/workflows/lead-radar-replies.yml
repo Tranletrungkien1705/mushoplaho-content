@@ -2,7 +2,7 @@ name: lead-radar-replies
 # Quet Gmail INBOX (IMAP) tim reply tu lead da gui -> danh dau 'da tra loi' tren dashboard.
 on:
   schedule:
-    - cron: '0 19 * * *'   # 02:00 gio VN (sau khi gui luc 01:00)
+    - cron: '*/15 * * * *'   # moi 15 phut -> reply hien gan realtime (khong doi 2h)
   workflow_dispatch: {}
 
 jobs:
