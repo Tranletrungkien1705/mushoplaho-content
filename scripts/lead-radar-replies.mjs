@@ -43,14 +43,14 @@ try {
   if (!res.ok) { await client.logout(); process.exit(1); }
   console.log(`==> danh dau 'da tra loi': ${res.marked} lead`);
 
-  // gan label + SKIP INBOX cho MOI email cua lead (ke ca mail CU da xu ly), moi domain 1 sub-label
+  // gan label + SKIP INBOX cho MOI email cua lead (ke ca mail CU), label theo cong ty/domain (worker tinh)
   const toLabel = res.leadEmails && res.leadEmails.length ? res.leadEmails : (res.matched || []);
+  const labels = res.labels || {};
   const created = new Set();
   for (const em of toLabel) {
     const rec = byEmail.get(em);
     if (!rec?.uid) continue;
-    const domain = (em.split("@")[1] || "other").toLowerCase();
-    const box = `${LABEL}/${domain}`;                         // label nho trong label lon
+    const box = labels[em] || `${LABEL}/${(em.split("@")[1] || "other").toLowerCase()}`;
     if (!created.has(box)) { try { await client.mailboxCreate(box); } catch { } created.add(box); }
     try { await client.messageMove(rec.uid, box, { uid: true }); console.log(`move -> ${box} (${em})`); }   // move = ra khoi Inbox
     catch (e) { console.log("move loi", em, String(e).slice(0, 80)); }
