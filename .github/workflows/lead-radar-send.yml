@@ -19,7 +19,8 @@ jobs:
       TOKEN: ${{ secrets.LR_TOKEN }}
     steps:
       - name: Quet lead moi
-        run: echo "pull: $(curl -s -X POST "$BASE/pull?t=$TOKEN")"
+        run: |
+          echo "pull: $(curl -s -X POST "$BASE/pull?t=$TOKEN")"
 
       - name: Gui batch theo CAP warm-up
         run: |
@@ -54,11 +55,14 @@ jobs:
           echo "==> DA FOLLOW-UP=$FU"
 
       - name: Sync 'da xem'
-        run: echo "opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
+        run: |
+          echo "opens: $(curl -s -X POST "$BASE/sync-opens?t=$TOKEN")"
 
       - name: Sync email hong/spam (bao ve reputation)
-        run: echo "bounces: $(curl -s -X POST "$BASE/sync-bounces?t=$TOKEN")"
+        run: |
+          echo "bounces: $(curl -s -X POST "$BASE/sync-bounces?t=$TOKEN")"
 
       - name: Tang CAP cho ngay mai
         if: ${{ github.event.inputs.limit == '' && env.SENT != '0' }}
-        run: echo "bump: $(curl -s -X POST "$BASE/cap-bump?t=$TOKEN")"
+        run: |
+          echo "bump: $(curl -s -X POST "$BASE/cap-bump?t=$TOKEN")"
