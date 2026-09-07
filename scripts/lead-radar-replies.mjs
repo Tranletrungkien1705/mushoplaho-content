@@ -43,10 +43,10 @@ try {
   if (!res.ok) { await client.logout(); process.exit(1); }
   console.log(`==> danh dau 'da tra loi': ${res.marked} lead`);
 
-  // gan label cho cac email da khop: MOI website 1 sub-label "Lead-Radar/<domain>" + SKIP INBOX (move)
-  const matched = res.matched || [];
+  // gan label + SKIP INBOX cho MOI email cua lead (ke ca mail CU da xu ly), moi domain 1 sub-label
+  const toLabel = res.leadEmails && res.leadEmails.length ? res.leadEmails : (res.matched || []);
   const created = new Set();
-  for (const em of matched) {
+  for (const em of toLabel) {
     const rec = byEmail.get(em);
     if (!rec?.uid) continue;
     const domain = (em.split("@")[1] || "other").toLowerCase();
