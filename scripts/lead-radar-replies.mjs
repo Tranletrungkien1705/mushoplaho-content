@@ -43,12 +43,17 @@ try {
   if (!res.ok) { await client.logout(); process.exit(1); }
   console.log(`==> danh dau 'da tra loi': ${res.marked} lead`);
 
-  // gan label cho cac email da khop la lead that
+  // gan label cho cac email da khop: MOI website 1 sub-label "Lead-Radar/<domain>" + SKIP INBOX (move)
   const matched = res.matched || [];
-  const uids = matched.map(em => byEmail.get(em)?.uid).filter(Boolean);
-  if (uids.length) {
-    try { await client.messageCopy(uids, LABEL, { uid: true }); console.log(`gan label "${LABEL}" cho ${uids.length} email`); }
-    catch (e) { console.log("label loi:", String(e).slice(0, 120)); }
+  const created = new Set();
+  for (const em of matched) {
+    const rec = byEmail.get(em);
+    if (!rec?.uid) continue;
+    const domain = (em.split("@")[1] || "other").toLowerCase();
+    const box = `${LABEL}/${domain}`;                         // label nho trong label lon
+    if (!created.has(box)) { try { await client.mailboxCreate(box); } catch { } created.add(box); }
+    try { await client.messageMove(rec.uid, box, { uid: true }); console.log(`move -> ${box} (${em})`); }   // move = ra khoi Inbox
+    catch (e) { console.log("move loi", em, String(e).slice(0, 80)); }
   }
 } finally {
   try { await client.logout(); } catch {}
