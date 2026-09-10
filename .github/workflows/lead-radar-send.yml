@@ -22,6 +22,15 @@ jobs:
         run: |
           echo "pull: $(curl -s -X POST "$BASE/pull?t=$TOKEN")"
 
+      - name: Tu dong bo sung khi pool sap can (<250 lead chua gui)
+        run: |
+          for i in 1 2 3; do
+            R=$(curl -s -X POST "$BASE/autofill?t=$TOKEN&threshold=250")
+            echo "autofill#$i: $R"
+            echo "$R" | grep -q '"action":"skip"' && break
+            sleep 2
+          done
+
       - name: Gui batch theo CAP warm-up
         run: |
           FORCE="${{ github.event.inputs.limit }}"
