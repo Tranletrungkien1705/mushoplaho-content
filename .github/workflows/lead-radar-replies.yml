@@ -21,3 +21,9 @@ jobs:
           LR_BASE: ${{ secrets.LR_BASE }}
           LR_TOKEN: ${{ secrets.LR_TOKEN }}
         run: node scripts/lead-radar-replies.mjs
+      - name: Phan loai mail khac vao label rieng (LinkedIn/YouTube/viec lam...)
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          DAYS: '3'
+        run: node scripts/inbox-sorter.mjs
