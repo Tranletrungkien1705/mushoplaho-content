@@ -30,6 +30,8 @@ try {
     if (!from) continue;
     const em = from.toLowerCase();
     if (byEmail.has(em)) continue;
+    // BO QUA mail cua chinh minh (quet All Mail nen co ca thu da gui)
+    if (em === (GMAIL_USER || "").toLowerCase() || /brevosend.com$|@11853273./i.test(em)) continue;
     let text = "", inReplyTo = "", references = "";
     try {
       const p = await simpleParser(msg.source);
