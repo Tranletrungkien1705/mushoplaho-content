@@ -26,12 +26,17 @@ try {
     if (!from) continue;
     const em = from.toLowerCase();
     if (byEmail.has(em)) continue;
-    let text = "";
-    try { const p = await simpleParser(msg.source); text = (p.text || p.subject || "").trim(); } catch {}
-    byEmail.set(em, { email: em, subject: msg.envelope?.subject || "", text: text.slice(0, 3000), uid: msg.uid });
+    let text = "", inReplyTo = "", references = "";
+    try {
+      const p = await simpleParser(msg.source);
+      text = (p.text || p.subject || "").trim();
+      inReplyTo = p.inReplyTo || "";
+      references = Array.isArray(p.references) ? p.references.join(" ") : (p.references || "");
+    } catch {}
+    byEmail.set(em, { email: em, subject: msg.envelope?.subject || "", text: text.slice(0, 3000), inReplyTo, references, uid: msg.uid });
   }
 
-  const messages = [...byEmail.values()].map(({ email, subject, text }) => ({ email, subject, text }));
+  const messages = [...byEmail.values()].map(({ email, subject, text, inReplyTo, references }) => ({ email, subject, text, inReplyTo, references }));
   console.log("nguoi gui trong INBOX 30 ngay:", messages.length);
 
   const r = await fetch(`${LR_BASE}/mark-replied?t=${encodeURIComponent(LR_TOKEN)}`, {
