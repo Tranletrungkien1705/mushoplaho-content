@@ -21,7 +21,7 @@ try {
 
   // quet ALL MAIL (tim theo special-use \All de dung voi MOI ngon ngu Gmail)
   let allBox = null;
-  try { for (const b of await client.list()) { if (b.specialUse === "\All") { allBox = b.path; break; } } } catch {}
+  try { for (const b of await client.list()) { const su = String(b.specialUse || ""); const fl = [...(b.flags || [])].join(" "); if (su === "\\All" || fl.includes("\\All")) { allBox = b.path; break; } } } catch {}
   try { await client.mailboxOpen(allBox || "INBOX"); console.log("quet hop thu:", allBox || "INBOX"); }
   catch { await client.mailboxOpen("INBOX"); console.log("quet hop thu: INBOX (fallback)"); }
   const since = new Date(Date.now() - 30 * 864e5);
