@@ -19,8 +19,11 @@ try {
   // tao label neu chua co
   try { await client.mailboxCreate(LABEL); console.log("tao label", LABEL); } catch { /* da co */ }
 
-  // quet ALL MAIL (khong chi INBOX) -> mail bi Gmail filter archive van bat duoc reply
-  try { await client.mailboxOpen("[Gmail]/All Mail"); } catch { await client.mailboxOpen("INBOX"); }
+  // quet ALL MAIL (tim theo special-use \All de dung voi MOI ngon ngu Gmail)
+  let allBox = null;
+  try { for (const b of await client.list()) { if (b.specialUse === "\All") { allBox = b.path; break; } } } catch {}
+  try { await client.mailboxOpen(allBox || "INBOX"); console.log("quet hop thu:", allBox || "INBOX"); }
+  catch { await client.mailboxOpen("INBOX"); console.log("quet hop thu: INBOX (fallback)"); }
   const since = new Date(Date.now() - 30 * 864e5);
   for await (const msg of client.fetch({ since }, { uid: true, envelope: true, source: true })) {
     const from = msg.envelope?.from?.[0]?.address;
