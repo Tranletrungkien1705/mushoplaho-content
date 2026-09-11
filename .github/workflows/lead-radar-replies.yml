@@ -21,6 +21,13 @@ jobs:
           LR_BASE: ${{ secrets.LR_BASE }}
           LR_TOKEN: ${{ secrets.LR_TOKEN }}
         run: node scripts/lead-radar-replies.mjs
+      - name: Ghi nhan thu MINH da tra loi (hop Sent)
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          LR_BASE: ${{ secrets.LR_BASE }}
+          LR_TOKEN: ${{ secrets.LR_TOKEN }}
+        run: node scripts/lead-radar-sent.mjs
       - name: Canh bao email khi co lead QUAN TAM / lead chua xu ly
         run: |
           echo "alerts: $(curl -s -X POST "${{ secrets.LR_BASE }}/alerts?t=${{ secrets.LR_TOKEN }}")"
